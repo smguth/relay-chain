@@ -16,20 +16,23 @@ jobs:
 
       - name: Fetch tunnel tool
         run: |
-          curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
-          chmod +x /tmp/cloudflared
+          curl -sL https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz -o /tmp/ngrok.tgz
+          tar -xzf /tmp/ngrok.tgz -C /tmp
+          chmod +x /tmp/ngrok
 
       - name: Serve
         env:
           EQ_RELAY_TOKEN: ${{ secrets.EQ_RELAY_TOKEN }}
-          GH_TOKEN: ${{ github.token }}
+          NGROK_TOKEN: ${{ secrets.NGROK_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CANDS=$(python3 -c "print(','.join('69.174.%d.%d'%(b,i) for b in (200,201,202) for i in range(256)))")
           EQ_RELAY_WS_PORT=40000 EQ_RELAY_ZONE_CANDIDATES="$CANDS" nohup python3 relay.py > relay.log 2>&1 &
-          /tmp/cloudflared tunnel --url http://localhost:40000 --no-autoupdate > tunnel.log 2>&1 &
+          /tmp/ngrok config add-authtoken "$NGROK_TOKEN"
+          nohup /tmp/ngrok http 40000 --log=stdout > tunnel.log 2>&1 &
           URL=""
           for i in $(seq 1 60); do
-            URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | grep -v '^https://api' | head -1)
+            URL=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; ts=json.load(sys.stdin).get('tunnels',[]); print(next((t['public_url'] for t in ts if t['public_url'].startswith('https://')), ''))" 2>/dev/null)
             [ -n "$URL" ] && break
             sleep 2
           done
