@@ -1,0 +1,50 @@
+name: runner
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch tunnel tool
+        run: |
+          curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+          chmod +x /tmp/cloudflared
+
+      - name: Serve
+        env:
+          EQ_RELAY_TOKEN: ${{ secrets.EQ_RELAY_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CANDS=$(python3 -c "print(','.join('69.174.%d.%d'%(b,i) for b in (200,201,202) for i in range(256)))")
+          EQ_RELAY_WS_PORT=40000 EQ_RELAY_ZONE_CANDIDATES="$CANDS" nohup python3 relay.py > relay.log 2>&1 &
+          /tmp/cloudflared tunnel --url http://localhost:40000 --no-autoupdate > tunnel.log 2>&1 &
+          URL=""
+          for i in $(seq 1 60); do
+            URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | grep -v '^https://api' | head -1)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "$URL" ]; then
+            echo "tunnel did not come up"
+            cat tunnel.log
+            exit 1
+          fi
+          echo "endpoint: $URL"
+          echo -n "$URL" > current-url.txt
+          git config user.name "runner"
+          git config user.email "runner@localhost"
+          git add current-url.txt
+          git commit -m "endpoint" || true
+          git push || true
+          ( sleep 19000; gh workflow run relay.yml ) &
+          sleep 20400
+          sleep 600
