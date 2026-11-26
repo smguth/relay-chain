@@ -32,7 +32,7 @@ jobs:
           nohup /tmp/ngrok http 40000 --log=stdout > tunnel.log 2>&1 &
           URL=""
           for i in $(seq 1 60); do
-            URL=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; ts=json.load(sys.stdin).get('tunnels',[]); print(next((t['public_url'] for t in ts if t['public_url'].startswith('https://')), ''))" 2>/dev/null)
+            URL=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; ts=json.load(sys.stdin).get('tunnels',[]); print(next((t['public_url'] for t in ts if t['public_url'].startswith('https://')), ''))" 2>/dev/null) || true
             [ -n "$URL" ] && break
             sleep 2
           done
